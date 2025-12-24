@@ -1,11 +1,12 @@
 from fastapi import APIRouter
+from app.db.database import SessionLocal
+from app.db.models import Measurement
 
 router = APIRouter()
 
-@router.get("/")
-def read_root():
-    return {"message": "AirMonitor API"}
-
-@router.get("/health")
-def health_check():
-    return {"status": "ok"}
+@router.get("/latest")
+def get_latest():
+    db = SessionLocal()
+    m = db.query(Measurement).order_by(Measurement.timestamp.desc()).first()
+    db.close()
+    return m
