@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.db.database import SessionLocal
 from app.db.models import Measurement
-from app.services.airly_client import fetch_air_quality
+from app.services.airly_client import fetch_air_quality, fetch_nearest_installations
 
 router = APIRouter()
 
@@ -51,4 +51,60 @@ def fetch_latest(lat: float = 52.237, lng: float = 21.017):
             "timestamp": measurement.timestamp
         }
     except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/fetch-nearby")
+def fetch_nearby(lat: float = 52.237, lng: float = 21.017, distance: int = 5, max_results: int = 30):
+    """Fetch nearby installations and save to database"""
+    try:
+        installations = fetch_nearest_installations(lat, lng, distance, max_results)
+        db = SessionLocal()
+        
+        result = []
+        for inst in installations:
+            inst_lat = inst.get("location", {}).get("latitude")
+            inst_lng = inst.get("location", {}).get("longitude")
+            
+            if not inst_lat or not inst_lng:
+                continue
+            
+            try:
+                # Fetch measurements for this installation
+                measurements = fetch_air_quality(inst_lat, inst_lng)
+                pm25 = None
+                pm10 = None
+                
+                if "current" in measurements and "values" in measurements["current"]:
+                    for value in measurements["current"]["values"]:
+                        if value["name"] == "PM25":
+                            pm25 = value["value"]
+                        elif value["name"] == "PM10":
+                            pm10 = value["value"]
+                
+                # Save to database
+                measurement = Measurement(
+                    lat=inst_lat,
+                    lng=inst_lng,
+                    pm25=pm25,
+                    pm10=pm10
+                )
+                db.add(measurement)
+                
+                result.append({
+                    "lat": inst_lat,
+                    "lng": inst_lng,
+                    "pm25": pm25,
+                    "pm10": pm10,
+                    "address": inst.get("address", {}).get("displayAddress", "")
+                })
+            except Exception as e:
+                print(f"Error fetching for installation: {e}")
+                continue
+        
+        db.commit()
+        db.close()
+        
+        return result
+    except Exception as e:
+        db.close()
         return {"error": str(e)}
