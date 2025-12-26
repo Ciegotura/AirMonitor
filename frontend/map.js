@@ -43,6 +43,27 @@ function wireDbButton() {
   } else {
     console.warn('Nie znaleziono #show-db-btn');
   }
+
+  const clearBtn = document.getElementById('clear-db-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      console.log('Klik: wyczysc baze');
+      try {
+        const res = await fetch('/measurements', { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        const msg = res.ok
+          ? (`Usunięto rekordów: ${data.deleted ?? 'nieznana liczba'}`)
+          : (`Błąd usuwania: ${res.status}`);
+        const out = document.getElementById('db-output');
+        if (out) out.innerText = msg;
+      } catch (err) {
+        const out = document.getElementById('db-output');
+        if (out) out.innerText = 'Błąd: ' + err;
+      }
+    });
+  } else {
+    console.warn('Nie znaleziono #clear-db-btn');
+  }
 }
 
 if (document.readyState === 'loading') {

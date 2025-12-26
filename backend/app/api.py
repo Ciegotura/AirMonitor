@@ -128,3 +128,15 @@ def get_measurements(limit: int = Query(100, description="Max number of rows to 
         return result
     finally:
         db.close()
+
+@router.delete("/measurements")
+def delete_measurements():
+    """Delete all measurements from database and return count."""
+    db = SessionLocal()
+    try:
+        # Returns number of rows deleted
+        deleted = db.query(Measurement).delete(synchronize_session=False)
+        db.commit()
+        return {"deleted": deleted}
+    finally:
+        db.close()
