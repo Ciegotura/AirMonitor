@@ -8,6 +8,49 @@ function getPMColor(pm25) {
     return '#8f0000';                       // Ciemny czerwony
 }
 
+async function fetchAndShowMeasurements() {
+  try {
+    const res = await fetch('/measurements');
+    if (!res.ok) {
+      document.getElementById('db-output').innerText = 'Błąd pobierania: ' + res.status;
+      return;
+    }
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      document.getElementById('db-output').innerText = 'Brak rekordów w bazie.';
+      return;
+    }
+    // render table
+    let html = '<table style="width:100%; border-collapse:collapse;">' +
+               '<tr><th>ID</th><th>lat</th><th>lng</th><th>PM2.5</th><th>PM10</th><th>timestamp</th></tr>';
+    for (const row of data) {
+      html += `<tr style="border-top:1px solid #ddd"><td>${row.id}</td><td>${row.lat}</td><td>${row.lng}</td><td>${row.pm25 ?? ''}</td><td>${row.pm10 ?? ''}</td><td>${row.timestamp ?? ''}</td></tr>`;
+    }
+    html += '</table>';
+    document.getElementById('db-output').innerHTML = html;
+  } catch (err) {
+    document.getElementById('db-output').innerText = 'Błąd: ' + err;
+  }
+}
+
+function wireDbButton() {
+  const btn = document.getElementById('show-db-btn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      console.log('Klik: pokaz dane z bazy');
+      fetchAndShowMeasurements();
+    });
+  } else {
+    console.warn('Nie znaleziono #show-db-btn');
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireDbButton);
+} else {
+  wireDbButton();
+}
+
 // Inicjalizacja mapy
 const map = L.map('map').setView([52.237, 21.017], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

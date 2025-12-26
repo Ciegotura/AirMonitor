@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from app.db.database import SessionLocal
 from app.db.models import Measurement
 from app.services.airly_client import fetch_air_quality, fetch_nearest_installations
@@ -108,3 +108,23 @@ def fetch_nearby(lat: float = 52.237, lng: float = 21.017, distance: int = 5, ma
     except Exception as e:
         db.close()
         return {"error": str(e)}
+
+@router.get("/measurements")
+def get_measurements(limit: int = Query(100, description="Max number of rows to return")):
+    """Return measurements from database (most recent first)."""
+    db = SessionLocal()
+    try:
+        rows = db.query(Measurement).order_by(Measurement.id.desc()).limit(limit).all()
+        result = []
+        for r in rows:
+            result.append({
+                "id": r.id,
+                "lat": r.lat,
+                "lng": r.lng,
+                "pm25": r.pm25,
+                "pm10": r.pm10,
+                "timestamp": r.timestamp.isoformat() if getattr(r, "timestamp", None) else None
+            })
+        return result
+    finally:
+        db.close()
