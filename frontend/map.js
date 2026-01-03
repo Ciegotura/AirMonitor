@@ -73,17 +73,17 @@ if (document.readyState === 'loading') {
 }
 
 // Inicjalizacja mapy
-const map = L.map('map').setView([52.237, 21.017], 11);
+const map = L.map('map').setView([50.06, 19.93], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 19
 }).addTo(map);
 
-// Pobierz pobliskie instalacje
-fetch("http://localhost:8000/fetch-nearby?lat=52.237&lng=21.017&distance=5&max_results=30")
+// Pobierz pomiary z bazy danych
+fetch("http://localhost:8000/measurements")
     .then(r => r.json())
         .then(data => {
-            console.log('Pobliskie instalacje:', data);
+            console.log('Pomiary z bazy:', data);
 
             if (!Array.isArray(data)) {
                 console.error('Unexpected data from /fetch-nearby:', data);

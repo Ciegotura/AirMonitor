@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query
+from datetime import datetime, timedelta
 from app.db.database import SessionLocal
 from app.db.models import Measurement
 from app.services.airly_client import fetch_air_quality, fetch_nearest_installations
@@ -54,11 +55,19 @@ def fetch_latest(lat: float = 52.237, lng: float = 21.017):
         return {"error": str(e)}
 
 @router.get("/fetch-nearby")
-def fetch_nearby(lat: float = 52.237, lng: float = 21.017, distance: int = 5, max_results: int = 30):
+def fetch_nearby(lat: float = 50.06, lng: float = 19.93, distance: int = 5, max_results: int = 30):
     """Fetch nearby installations and save to database"""
+    db = SessionLocal()
     try:
         installations = fetch_nearest_installations(lat, lng, distance, max_results)
-        db = SessionLocal()
+        
+        # Get all existing coordinates for today (single query)
+        today = datetime.utcnow().date()
+        existing_measurements = db.query(Measurement.lat, Measurement.lng).filter(
+            Measurement.timestamp >= datetime.combine(today, datetime.min.time())
+        ).all()
+        
+        existing_coords = set((lat, lng) for lat, lng in existing_measurements)
         
         result = []
         for inst in installations:
@@ -66,6 +75,10 @@ def fetch_nearby(lat: float = 52.237, lng: float = 21.017, distance: int = 5, ma
             inst_lng = inst.get("location", {}).get("longitude")
             
             if not inst_lat or not inst_lng:
+                continue
+            
+            # Skip if already have measurement for this location today
+            if (inst_lat, inst_lng) in existing_coords:
                 continue
             
             try:
