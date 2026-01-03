@@ -1,15 +1,377 @@
 <!DOCTYPE html>
-<html>
+<html lang="pl">
 <head>
-  <title>AirMonitor</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirMonitor - Jakość Powietrza w Krakowie</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* MAPA */
+    #map {
+      flex: 1;
+      background: #e0e0e0;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 350px;
+      background: white;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      border-left: 1px solid #ddd;
+    }
+
+    .sidebar-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .sidebar-header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .sidebar-header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .sidebar-content {
+      padding: 20px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* STATYSTYKI */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      border-left: 4px solid #667eea;
+      text-align: center;
+    }
+
+    .stat-card h3 {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .stat-unit {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    /* LEGENDA JAKOŚCI POWIETRZA */
+    .legend {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .legend h3 {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 12px;
+      color: #333;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 1px solid #333;
+    }
+
+    .legend-text {
+      flex: 1;
+    }
+
+    .legend-range {
+      font-size: 11px;
+      color: #666;
+    }
+
+    /* KONTROLKI */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+
+    .btn-secondary:hover {
+      background: #e8e8e8;
+    }
+
+    .btn-danger {
+      background: #ff6b6b;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #ee5a5a;
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    }
+
+    /* TABELA POMIARÓW */
+    .measurements-section {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .measurements-section h3 {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 12px;
+      color: #333;
+    }
+
+    .measurements-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .measurements-table thead {
+      background: #f0f0f0;
+    }
+
+    .measurements-table th {
+      padding: 8px 6px;
+      text-align: left;
+      font-weight: 600;
+      color: #666;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .measurements-table td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .measurements-table tr:hover {
+      background: #fff;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #999;
+      padding: 20px 10px;
+      font-size: 13px;
+    }
+
+    /* FOOTER */
+    .sidebar-footer {
+      border-top: 1px solid #eee;
+      padding: 15px 20px;
+      background: #f8f9fa;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+
+    /* SCROLL */
+    .sidebar-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .sidebar-content::-webkit-scrollbar-thumb {
+      background: #bbb;
+      border-radius: 3px;
+    }
+
+    .sidebar-content::-webkit-scrollbar-thumb:hover {
+      background: #999;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 40vh;
+      }
+      
+      .container {
+        flex-direction: column;
+      }
+
+      #map {
+        height: 60vh;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div id="map" style="height: 100vh"></div>
-<button id="show-db-btn">Pokaż zawartość bazy</button>
-<div id="db-output" style="max-height:300px; overflow:auto; margin-top:8px;"></div>
-<button id="clear-db-btn" style="margin-top:8px;">Wyczyść bazę</button>
+  <div class="container">
+    <!-- MAPA -->
+    <div id="map"></div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h1>🌍 AirMonitor</h1>
+        <p>Jakość powietrza w Krakowie</p>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- STATYSTYKI -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <h3>Średnia PM2.5</h3>
+            <div class="stat-value" id="avg-pm25">--</div>
+            <div class="stat-unit">µg/m³</div>
+          </div>
+          <div class="stat-card">
+            <h3>Średnia PM10</h3>
+            <div class="stat-value" id="avg-pm10">--</div>
+            <div class="stat-unit">µg/m³</div>
+          </div>
+        </div>
+
+        <!-- LEGENDA -->
+        <div class="legend">
+          <h3>Skala Jakości</h3>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #00aa00;"></div>
+            <div class="legend-text">
+              <strong>Dobra</strong>
+              <div class="legend-range">≤12 µg/m³</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #ffff00;"></div>
+            <div class="legend-text">
+              <strong>Zadowalająca</strong>
+              <div class="legend-range">12-35.4 µg/m³</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #ff7700;"></div>
+            <div class="legend-text">
+              <strong>Umiarkowana</strong>
+              <div class="legend-range">35.4-55.4 µg/m³</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #ff0000;"></div>
+            <div class="legend-text">
+              <strong>Zła</strong>
+              <div class="legend-range">55.4-150.4 µg/m³</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #8f0000;"></div>
+            <div class="legend-text">
+              <strong>Bardzo zła</strong>
+              <div class="legend-range">>150.4 µg/m³</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KONTROLKI -->
+        <div class="controls">
+          <button class="btn-primary" id="show-db-btn">📊 Pokaż dane</button>
+          <button class="btn-secondary" id="refresh-btn">🔄 Odśwież</button>
+          <button class="btn-danger" id="clear-db-btn">🗑️ Wyczyść bazę</button>
+        </div>
+
+        <!-- TABELA POMIARÓW -->
+        <div class="measurements-section">
+          <h3>Ostatnie Pomiary</h3>
+          <div id="db-output" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div>Liczba pomiarów: <strong id="measurement-count">0</strong></div>
+        <div style="margin-top: 8px; font-size: 11px; color: #999;">Ostatnia aktualizacja: <span id="last-update">--:--</span></div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="map.js?v=5"></script>
+  <script src="map.js?v=6"></script>
 </body>
 </html>

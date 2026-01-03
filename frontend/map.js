@@ -8,68 +8,163 @@ function getPMColor(pm25) {
     return '#8f0000';                       // Ciemny czerwony
 }
 
+let allMeasurements = [];
+let mapMarkers = [];
+
+// Oblicz statystyki
+function updateStatistics(data) {
+    const validPM25 = data.filter(d => d.pm25 != null).map(d => d.pm25);
+    const validPM10 = data.filter(d => d.pm10 != null).map(d => d.pm10);
+
+    const avgPM25 = validPM25.length > 0 ? (validPM25.reduce((a, b) => a + b, 0) / validPM25.length).toFixed(1) : '--';
+    const avgPM10 = validPM10.length > 0 ? (validPM10.reduce((a, b) => a + b, 0) / validPM10.length).toFixed(1) : '--';
+
+    document.getElementById('avg-pm25').innerText = avgPM25;
+    document.getElementById('avg-pm10').innerText = avgPM10;
+    document.getElementById('measurement-count').innerText = data.length;
+
+    const now = new Date();
+    const time = now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('last-update').innerText = time;
+}
+
+// Wyświetl pomiary w tabeli
 async function fetchAndShowMeasurements() {
   try {
-    const res = await fetch('/measurements');
+    const res = await fetch('/measurements?limit=500');
     if (!res.ok) {
-      document.getElementById('db-output').innerText = 'Błąd pobierania: ' + res.status;
+      document.getElementById('db-output').innerHTML = '<div class="empty-state">Błąd pobierania: ' + res.status + '</div>';
       return;
     }
     const data = await res.json();
+    allMeasurements = data;
+    
     if (!Array.isArray(data) || data.length === 0) {
-      document.getElementById('db-output').innerText = 'Brak rekordów w bazie.';
+      document.getElementById('db-output').innerHTML = '<div class="empty-state">Brak rekordów w bazie.</div>';
+      updateStatistics([]);
       return;
     }
-    // render table
-    let html = '<table style="width:100%; border-collapse:collapse;">' +
-               '<tr><th>ID</th><th>lat</th><th>lng</th><th>PM2.5</th><th>PM10</th><th>timestamp</th></tr>';
-    for (const row of data) {
-      html += `<tr style="border-top:1px solid #ddd"><td>${row.id}</td><td>${row.lat}</td><td>${row.lng}</td><td>${row.pm25 ?? ''}</td><td>${row.pm10 ?? ''}</td><td>${row.timestamp ?? ''}</td></tr>`;
+
+    updateStatistics(data);
+
+    // Render table - pokazuj ostatnie 10 pomiarów
+    let html = '<table class="measurements-table">' +
+               '<thead><tr><th>PM2.5</th><th>PM10</th><th>Czas</th></tr></thead><tbody>';
+    
+    const recent = data.slice(0, 10);
+    for (const row of recent) {
+      const time = row.timestamp ? new Date(row.timestamp).toLocaleTimeString('pl-PL') : '--';
+      html += `<tr>
+                <td><strong>${row.pm25 ? row.pm25.toFixed(1) : '--'}</strong></td>
+                <td>${row.pm10 ? row.pm10.toFixed(1) : '--'}</td>
+                <td style="font-size: 11px; color: #999;">${time}</td>
+              </tr>`;
     }
-    html += '</table>';
+    html += '</tbody></table>';
     document.getElementById('db-output').innerHTML = html;
   } catch (err) {
-    document.getElementById('db-output').innerText = 'Błąd: ' + err;
+    document.getElementById('db-output').innerHTML = '<div class="empty-state">Błąd: ' + err + '</div>';
   }
 }
 
-function wireDbButton() {
-  const btn = document.getElementById('show-db-btn');
-  if (btn) {
-    btn.addEventListener('click', () => {
+// Wczytaj i wyświetl mapę
+async function loadMapData() {
+  try {
+    const res = await fetch('/measurements?limit=500');
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    
+    if (!Array.isArray(data)) {
+      console.error('Unexpected data format:', data);
+      return;
+    }
+
+    // Usuń stare markery
+    mapMarkers.forEach(marker => map.removeLayer(marker));
+    mapMarkers = [];
+
+    let added = 0;
+    data.forEach(point => {
+        if (!point || point.lat == null || point.lng == null) return;
+
+        const marker = L.circleMarker(
+            [point.lat, point.lng],
+            {
+                radius: 8,
+                fillColor: getPMColor(point.pm25),
+                color: '#000',
+                weight: 2,
+                opacity: 0.8,
+                fillOpacity: 0.7
+            }
+        ).addTo(map);
+
+        const popupText = `
+            <div style="font-size: 13px;">
+                <strong>Punkt pomiarowy</strong><br>
+                <hr style="margin: 5px 0;">
+                PM2.5: <strong>${point.pm25 ? point.pm25.toFixed(1) : '--'}</strong> µg/m³<br>
+                PM10: <strong>${point.pm10 ? point.pm10.toFixed(1) : '--'}</strong> µg/m³<br>
+                <small style="color: #666;">Szer: ${point.lat.toFixed(4)}, Dł: ${point.lng.toFixed(4)}</small>
+            </div>
+        `;
+        marker.bindPopup(popupText);
+        mapMarkers.push(marker);
+        added += 1;
+    });
+
+    console.log(`Dodano ${added} markerów`);
+  } catch (e) {
+    console.error('Błąd ładowania mapy:', e);
+  }
+}
+
+// Obsługa przycisków
+function wireButtons() {
+  const showDbBtn = document.getElementById('show-db-btn');
+  if (showDbBtn) {
+    showDbBtn.addEventListener('click', () => {
       console.log('Klik: pokaz dane z bazy');
       fetchAndShowMeasurements();
     });
-  } else {
-    console.warn('Nie znaleziono #show-db-btn');
+  }
+
+  const refreshBtn = document.getElementById('refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      console.log('Klik: odswież');
+      loadMapData();
+      fetchAndShowMeasurements();
+    });
   }
 
   const clearBtn = document.getElementById('clear-db-btn');
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
-      console.log('Klik: wyczysc baze');
-      try {
-        const res = await fetch('/measurements', { method: 'DELETE' });
-        const data = await res.json().catch(() => ({}));
-        const msg = res.ok
-          ? (`Usunięto rekordów: ${data.deleted ?? 'nieznana liczba'}`)
-          : (`Błąd usuwania: ${res.status}`);
-        const out = document.getElementById('db-output');
-        if (out) out.innerText = msg;
-      } catch (err) {
-        const out = document.getElementById('db-output');
-        if (out) out.innerText = 'Błąd: ' + err;
+      if (confirm('Czy na pewno chcesz usunąć wszystkie pomiary?')) {
+        try {
+          const res = await fetch('/measurements', { method: 'DELETE' });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            alert(`Usunięto rekordów: ${data.deleted ?? 'nieznana liczba'}`);
+            loadMapData();
+            fetchAndShowMeasurements();
+          } else {
+            alert(`Błąd usuwania: ${res.status}`);
+          }
+        } catch (err) {
+          alert('Błąd: ' + err);
+        }
       }
     });
-  } else {
-    console.warn('Nie znaleziono #clear-db-btn');
   }
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', wireDbButton);
+  document.addEventListener('DOMContentLoaded', wireButtons);
 } else {
-  wireDbButton();
+  wireButtons();
 }
 
 // Inicjalizacja mapy
@@ -79,42 +174,14 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
 }).addTo(map);
 
-// Pobierz pomiary z bazy danych
-fetch("http://localhost:8000/measurements")
-    .then(r => r.json())
-        .then(data => {
-            console.log('Pomiary z bazy:', data);
+// Wczytaj dane przy starcie
+window.addEventListener('load', () => {
+  loadMapData();
+  fetchAndShowMeasurements();
+});
 
-            if (!Array.isArray(data)) {
-                console.error('Unexpected data from /fetch-nearby:', data);
-                return;
-            }
-
-            let added = 0;
-            data.forEach(point => {
-                if (!point || point.lat == null || point.lng == null) return;
-
-                const marker = L.circleMarker(
-                    [point.lat, point.lng],
-                    {
-                        radius: 8,
-                        fillColor: getPMColor(point.pm25),
-                        color: '#000',
-                        weight: 2,
-                        opacity: 0.8,
-                        fillOpacity: 0.7
-                    }
-                ).addTo(map);
-
-                const popupText = `
-                    <strong>${point.address || 'Punkt pomiarowy'}</strong><br>
-                    PM2.5: <strong>${point.pm25 ? point.pm25.toFixed(1) : '--'}</strong> µg/m³<br>
-                    PM10: <strong>${point.pm10 ? point.pm10.toFixed(1) : '--'}</strong> µg/m³
-                `;
-                marker.bindPopup(popupText);
-                added += 1;
-            });
-
-            console.log(`Dodano ${added} markerów`);
-        })
-    .catch(e => console.error('Błąd:', e));
+// Odśwież dane co 30 sekund
+setInterval(() => {
+  loadMapData();
+  fetchAndShowMeasurements();
+}, 30000);
